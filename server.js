@@ -1,58 +1,50 @@
+// Import required modules
 const express = require('express');
 const bodyParser = require('body-parser');
-const fs = require('fs');
-const XLSX = require('xlsx'); // Import the xlsx package
+const mysql = require('mysql2');
 const path = require('path');
+require('dotenv').config();
 
 const app = express();
 const PORT = 3000;
 
+// MySQL connection setup
+const db = mysql.createConnection({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME
+});
+
+// Connect to the database
+db.connect((err) => {
+    if (err) {
+        console.error('Error connecting to MySQL:', err.message);
+    } else {
+        console.log('Connected to MySQL database.');
+    }
+});
+
+// Middleware
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Function to add data to an Excel file
-function addToExcel(data) {
-    const filePath = './voting_data.xlsx';
-
-    // Check if the file exists
-    let workbook;
-    if (fs.existsSync(filePath)) {
-        workbook = XLSX.readFile(filePath);
-    } else {
-        workbook = XLSX.utils.book_new(); // Create a new workbook
-    }
-
-    // Get the first sheet or create a new one
-    const sheetName = 'Votes';
-    let worksheet = workbook.Sheets[sheetName];
-    if (!worksheet) {
-        worksheet = XLSX.utils.json_to_sheet([]); // Initialize an empty sheet if it doesn't exist
-        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-    }
-
-    // Read existing data
-    const existingData = XLSX.utils.sheet_to_json(worksheet);
-
-    // Add the new data
-    existingData.push(data);
-
-    // Convert the updated data back to a worksheet
-    const newWorksheet = XLSX.utils.json_to_sheet(existingData);
-    workbook.Sheets[sheetName] = newWorksheet;
-
-    // Write the updated workbook to the file
-    XLSX.writeFile(workbook, filePath);
-}
 
 // Handle voting POST request
 app.post('/vote', (req, res) => {
     const { email, password } = req.body;
 
     if (email && password) {
-        // Add data to the Excel file
-        addToExcel({ email, password, date: new Date().toISOString() });
-
-        res.status(200).send('Vote submitted successfully and saved to Excel.');
+        // Insert into the database
+        const query = `INSERT INTO votes (email, password) VALUES (?, ?)`;
+        db.query(query, [email, password], (err, result) => {
+            if (err) {
+                console.error('Error inserting into database:', err.message);
+                res.status(500).send('Failed to submit vote.');
+            } else {
+                console.log('Data inserted successfully:', result);
+                res.status(200).send('Vote submitted successfully.');
+            }
+        });
     } else {
         res.status(400).send('Invalid input.');
     }
@@ -62,4 +54,3 @@ app.post('/vote', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
- 
